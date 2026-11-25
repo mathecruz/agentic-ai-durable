@@ -22,7 +22,7 @@ metadata:
   name: infra-config
   namespace: default
 data:
-  QUARKUS_REDIS_HOSTS: redis://redis.default.svc.cluster.local:6379
+  QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://postgres.default.svc.cluster.local:5432/newsletter
   MP_MESSAGING_CONNECTOR_SMALLRYE_KAFKA_BOOTSTRAP_SERVERS: PLAIN_TEXT://kafka.default.svc.cluster.local:9092
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -189,6 +189,16 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            - name: QUARKUS_DATASOURCE_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  key: username
+                  name: postgres-credentials
+            - name: QUARKUS_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: password
+                  name: postgres-credentials
             - name: QUARKUS_FLOW_TRACING_ENABLED
               value: "true"
             - name: QUARKUS_LANGCHAIN4J_LOG_REQUESTS

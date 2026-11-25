@@ -13,8 +13,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Simple WebSocket endpoint used to broadcast review-required CloudEvents payloads to all connected browsers. The
- * payload string broadcasted should already be JSON.
+ * Simple WebSocket endpoint used to broadcast review-required CloudEvents payloads to all connected browsers (each
+ * browser filters by workflow instance id). The payload string broadcasted should already be JSON.
  */
 @ServerEndpoint("/ws/newsletter")
 @ApplicationScoped

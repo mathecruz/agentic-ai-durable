@@ -1,0 +1,12 @@
+version: 2
+updates:
+  - package-ecosystem: "maven"
+    directory: "/newsletter-drafter"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    groups:
+      quarkus:
+        patterns:
+          - "io.quarkus*"
+          - "io.quarkiverse*"

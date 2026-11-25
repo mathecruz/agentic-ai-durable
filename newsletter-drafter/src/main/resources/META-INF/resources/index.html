@@ -1,148 +1,539 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-bs-theme="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Intelligent Newsletter Drafter</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script>
+        // Apply the saved/system theme before the first paint to avoid a flash
+        (function () {
+            let theme = null;
+            try { theme = localStorage.getItem('theme'); } catch (e) { }
+            if (!theme) theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+            document.documentElement.setAttribute('data-bs-theme', theme);
+        })();
+    </script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        body { background-color: #f8f9fa; padding-top: 2rem; }
-        .spinner-container { min-height: 40vh; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-        /* Add a soft fade to make view transitions look nice */
-        .fade-in { animation: fadeIn 0.4s ease-in; }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        :root { --nl-accent: #4f46e5; --nl-accent-soft: rgba(79, 70, 229, .12); }
+        body { background: var(--bs-tertiary-bg); min-height: 100vh; }
+        .app-navbar { background: var(--bs-body-bg); border-bottom: 1px solid var(--bs-border-color); }
+        .brand-mark { width: 2rem; height: 2rem; border-radius: .6rem; background: var(--nl-accent); color: #fff;
+            display: inline-flex; align-items: center; justify-content: center; font-weight: 700; }
+        .card { border: 1px solid var(--bs-border-color); border-radius: .9rem; }
+        .btn-accent { background: var(--nl-accent); border-color: var(--nl-accent); color: #fff; }
+        .btn-accent:hover, .btn-accent:focus { background: #4338ca; border-color: #4338ca; color: #fff; }
+        .fade-in { animation: fadeIn .3s ease-in; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
-        .connection-status { border-radius: 999px; padding: 0.35rem 0.75rem; font-size: 0.85rem; font-weight: 600; display: inline-flex; align-items: center; gap: 0.45rem; }
-        .connection-status-dot { width: 0.55rem; height: 0.55rem; border-radius: 50%; }
-        .connection-connecting { background: #e7f1ff; color: #084298; }
+        /* Connection status pill */
+        .connection-status { border-radius: 999px; padding: .3rem .7rem; font-size: .8rem; font-weight: 600;
+            display: inline-flex; align-items: center; gap: .45rem; }
+        .connection-status-dot { width: .5rem; height: .5rem; border-radius: 50%; }
+        .connection-connecting { background: rgba(13, 110, 253, .12); color: var(--bs-primary-text-emphasis); }
         .connection-connecting .connection-status-dot { background: #0d6efd; }
-        .connection-connected { background: #e9f7ef; color: #146c43; }
+        .connection-connected { background: rgba(25, 135, 84, .12); color: var(--bs-success-text-emphasis); }
         .connection-connected .connection-status-dot { background: #198754; }
-        .connection-reconnecting { background: #fff3cd; color: #997404; }
+        .connection-reconnecting { background: rgba(255, 193, 7, .15); color: var(--bs-warning-text-emphasis); }
         .connection-reconnecting .connection-status-dot { background: #ffc107; }
-        .connection-disconnected { background: #f8d7da; color: #842029; }
+        .connection-disconnected { background: rgba(220, 53, 69, .12); color: var(--bs-danger-text-emphasis); }
         .connection-disconnected .connection-status-dot { background: #dc3545; }
+
+        /* History */
+        .history-list { max-height: calc(100vh - 13rem); overflow-y: auto; }
+        .history-item { cursor: pointer; border: 0; border-left: 3px solid transparent; text-align: left; width: 100%;
+            background: transparent; padding: .75rem 1rem; color: inherit; }
+        .history-item:hover { background: var(--bs-secondary-bg); }
+        .history-item.active { background: var(--nl-accent-soft); border-left-color: var(--nl-accent); }
+        .history-item + .history-item { border-top: 1px solid var(--bs-border-color-translucent); }
+        .history-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        /* Stepper */
+        .stepper { display: flex; gap: .5rem; list-style: none; padding: 0; margin: 0; }
+        .stepper li { flex: 1; text-align: center; position: relative; font-size: .85rem; color: var(--bs-secondary-color); }
+        .stepper li::before { content: ""; position: absolute; top: 1rem; left: -50%; width: 100%; height: 2px;
+            background: var(--bs-border-color); z-index: 0; }
+        .stepper li:first-child::before { display: none; }
+        .step-dot { position: relative; z-index: 1; width: 2rem; height: 2rem; border-radius: 50%; margin: 0 auto .4rem;
+            display: flex; align-items: center; justify-content: center; font-weight: 700;
+            background: var(--bs-body-bg); border: 2px solid var(--bs-border-color); }
+        .stepper li.done { color: var(--bs-body-color); }
+        .stepper li.done .step-dot { background: #198754; border-color: #198754; color: #fff; }
+        .stepper li.done::before, .stepper li.active::before { background: #198754; }
+        .stepper li.active { color: var(--bs-body-color); font-weight: 600; }
+        .stepper li.active .step-dot { border-color: var(--nl-accent); color: var(--nl-accent);
+            box-shadow: 0 0 0 .3rem var(--nl-accent-soft); animation: pulse 1.6s infinite; }
+        .stepper li.skipped { opacity: .45; }
+        .stepper li.failed .step-dot { background: #dc3545; border-color: #dc3545; color: #fff; }
+        @keyframes pulse { 50% { box-shadow: 0 0 0 .55rem transparent; } }
+        .activity-log { font-size: .85rem; max-height: 14rem; overflow-y: auto; }
+        .activity-log li { padding: .3rem 0; border-bottom: 1px dashed var(--bs-border-color-translucent); }
+
+        /* Newsletter preview */
+        .newsletter-preview { background: var(--bs-body-bg); border: 1px solid var(--bs-border-color); border-radius: .75rem; overflow: hidden; }
+        .newsletter-preview .masthead { background: var(--nl-accent); color: #fff; padding: .75rem 1.25rem;
+            font-size: .8rem; letter-spacing: .08em; text-transform: uppercase; display: flex; justify-content: space-between; }
+        .newsletter-preview .content { padding: 1.5rem 1.5rem 1rem; font-family: Georgia, 'Times New Roman', serif; }
+        .newsletter-preview h3 { font-weight: 700; margin-bottom: .75rem; }
+        .newsletter-preview .lead-text { font-size: 1.1rem; color: var(--bs-secondary-color); font-style: italic; }
+        .newsletter-preview .body-text p { line-height: 1.7; }
+        .ticker-chip { display: inline-block; padding: .15rem .5rem; margin: .15rem .25rem .15rem 0; border-radius: .4rem;
+            background: var(--nl-accent-soft); color: var(--nl-accent); font-weight: 600; font-size: .8rem; font-family: monospace; }
+        [data-bs-theme="dark"] .ticker-chip { color: #a5b4fc; }
     </style>
 </head>
 <body>
 
-<div class="container fade-in" style="max-width: 800px;">
-    <h2 class="mb-2 text-center text-primary">Intelligent Newsletter Drafter</h2>
-    <div class="text-center mb-4">
-        <span id="connection-status" class="connection-status connection-connecting" role="status" aria-live="polite">
-            <span class="connection-status-dot" aria-hidden="true"></span>
-            <span id="connection-status-text">Connecting...</span>
-        </span>
+<nav class="app-navbar py-2 mb-4">
+    <div class="container-xl d-flex align-items-center justify-content-between gap-2 flex-wrap">
+        <div class="d-flex align-items-center gap-2">
+            <span class="brand-mark" aria-hidden="true">N</span>
+            <span class="fw-semibold">Intelligent Newsletter Drafter</span>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <span id="connection-status" class="connection-status connection-connecting" role="status" aria-live="polite">
+                <span class="connection-status-dot" aria-hidden="true"></span>
+                <span id="connection-status-text">Connecting...</span>
+            </span>
+            <button id="btn-theme" class="btn btn-sm btn-outline-secondary" type="button" aria-label="Toggle dark mode">◐</button>
+        </div>
     </div>
+</nav>
 
-    <div id="request-view" class="card shadow-sm view-section">
-        <div class="card-body">
-            <h5 class="card-title mb-3">Create New Newsletter</h5>
-            <form id="request-form">
-                <div class="row">
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">Market Mood</label>
-                        <select id="input-mood" class="form-select">
-                            <option value="BULLISH">Bullish</option>
-                            <option value="BEARISH">Bearish</option>
-                        </select>
+<div class="container-xl pb-5">
+    <div class="row g-4">
+
+        <!-- History -->
+        <aside class="col-lg-4 order-2 order-lg-1">
+            <div class="card shadow-sm">
+                <div class="card-header bg-transparent d-flex justify-content-between align-items-center py-3">
+                    <h2 class="h6 mb-0">Newsletters</h2>
+                    <button id="btn-new" class="btn btn-sm btn-accent" type="button">+ New</button>
+                </div>
+                <div id="history-list" class="history-list" aria-live="polite"></div>
+                <div id="history-empty" class="text-center text-secondary small p-4 d-none">No newsletters yet. Create your first one!</div>
+            </div>
+        </aside>
+
+        <main class="col-lg-8 order-1 order-lg-2">
+
+            <!-- 1. Compose -->
+            <section id="compose-view" class="card shadow-sm view-section fade-in">
+                <div class="card-body p-4">
+                    <h1 class="h5 mb-1">Create a newsletter</h1>
+                    <p class="text-secondary small mb-4">The AI agents will draft, critique and edit it before asking for your review.</p>
+                    <form id="request-form">
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label for="input-mood" class="form-label">Market mood</label>
+                                <select id="input-mood" class="form-select">
+                                    <option value="BULLISH">📈 Bullish</option>
+                                    <option value="BEARISH">📉 Bearish</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label for="input-tone" class="form-label">Writing tone</label>
+                                <select id="input-tone" class="form-select">
+                                    <option value="FRIENDLY">Friendly</option>
+                                    <option value="NEUTRAL">Neutral</option>
+                                    <option value="FORMAL">Formal</option>
+                                    <option value="CAUTIOUS">Cautious</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label for="input-length" class="form-label">Length</label>
+                                <select id="input-length" class="form-select">
+                                    <option value="SHORT">Short</option>
+                                    <option value="MEDIUM" selected>Medium</option>
+                                    <option value="LONG">Long</option>
+                                </select>
+                            </div>
+                            <div class="col-12">
+                                <label for="input-movers" class="form-label">Top movers</label>
+                                <input type="text" id="input-movers" class="form-control" placeholder="e.g., AAPL, MSFT, TSLA" autocomplete="off" required>
+                                <div id="movers-preview" class="mt-1 small text-secondary">Comma separated tickers.</div>
+                            </div>
+                            <div class="col-12">
+                                <label for="input-macro" class="form-label">Macro data</label>
+                                <textarea id="input-macro" class="form-control" rows="3" placeholder="e.g., Fed expected to cut rates, tech sector rallying..." required></textarea>
+                            </div>
+                        </div>
+                        <button id="btn-generate" type="submit" class="btn btn-accent w-100 mt-4 py-2">Generate draft</button>
+                    </form>
+                </div>
+            </section>
+
+            <!-- 2. Progress -->
+            <section id="progress-view" class="card shadow-sm view-section d-none fade-in">
+                <div class="card-body p-4">
+                    <div class="d-flex justify-content-between align-items-start mb-4 gap-2">
+                        <div>
+                            <h1 class="h5 mb-1" id="progress-title">AI agents are working…</h1>
+                            <p class="text-secondary small mb-0" id="progress-subtitle">Drafting → critiquing → applying internal edits</p>
+                        </div>
+                        <span class="badge rounded-pill" id="progress-badge"></span>
                     </div>
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">Writing Tone</label>
-                        <select id="input-tone" class="form-select">
-                            <option value="FRIENDLY">Friendly</option>
-                            <option value="NEUTRAL">Neutral</option>
-                            <option value="FORMAL">Formal</option>
-                            <option value="CAUTIOUS">Cautious</option>
-                        </select>
+                    <ol class="stepper mb-4" id="stepper"></ol>
+                    <h2 class="h6 text-secondary">Activity</h2>
+                    <ul class="activity-log list-unstyled mb-0" id="activity-log"></ul>
+                    <p class="small text-secondary mt-3 mb-0">Workflow instance <code class="instance-id"></code></p>
+                </div>
+            </section>
+
+            <!-- 3. Review -->
+            <section id="review-view" class="view-section d-none fade-in">
+                <div class="card shadow-sm border-warning mb-3">
+                    <div class="card-body p-4">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h1 class="h5 mb-0">Your review is needed</h1>
+                            <span class="badge text-bg-warning">Awaiting review</span>
+                        </div>
+                        <ul class="nav nav-tabs mb-3" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active" data-tab="preview" type="button" role="tab">Preview</button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" data-tab="edit" type="button" role="tab">Edit</button>
+                            </li>
+                        </ul>
+                        <div id="tab-preview" class="tab-pane-custom"></div>
+                        <form id="review-form" class="tab-pane-custom d-none">
+                            <div class="mb-3">
+                                <label for="review-title" class="form-label fw-semibold">Title</label>
+                                <input type="text" id="review-title" class="form-control" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="review-lead" class="form-label fw-semibold">Lead</label>
+                                <textarea id="review-lead" class="form-control" rows="2" required></textarea>
+                            </div>
+                            <div>
+                                <label for="review-body" class="form-label fw-semibold">Body</label>
+                                <textarea id="review-body" class="form-control" rows="10" required></textarea>
+                            </div>
+                        </form>
                     </div>
                 </div>
-
-                <div class="mb-3">
-                    <label class="form-label">Length</label>
-                    <select id="input-length" class="form-select">
-                        <option value="SHORT">Short</option>
-                        <option value="MEDIUM" selected>Medium</option>
-                        <option value="LONG">Long</option>
-                    </select>
+                <div class="card shadow-sm">
+                    <div class="card-body p-4">
+                        <label for="review-notes" class="form-label fw-semibold">Notes for the AI editor</label>
+                        <textarea id="review-notes" class="form-control" rows="2" placeholder="Tell the HumanEditorAgent what to change (only needed for a revision)..."></textarea>
+                        <div class="d-flex flex-column flex-sm-row justify-content-between gap-2 mt-3">
+                            <button type="button" id="btn-revise" class="btn btn-outline-danger px-4">Ask AI to revise</button>
+                            <button type="button" id="btn-approve" class="btn btn-success px-4">Approve &amp; send</button>
+                        </div>
+                        <p class="small text-secondary mt-3 mb-0">Workflow instance <code class="instance-id"></code></p>
+                    </div>
                 </div>
+            </section>
 
-                <div class="mb-3">
-                    <label class="form-label">Top Movers (Comma separated tickers)</label>
-                    <input type="text" id="input-movers" class="form-control" placeholder="e.g., AAPL, MSFT, TSLA" required>
+            <!-- 4. Details (finished newsletters) -->
+            <section id="detail-view" class="card shadow-sm view-section d-none fade-in">
+                <div class="card-body p-4">
+                    <div class="d-flex justify-content-between align-items-center mb-3 gap-2">
+                        <h1 class="h5 mb-0" id="detail-heading">Newsletter sent</h1>
+                        <span class="badge rounded-pill" id="detail-badge"></span>
+                    </div>
+                    <div id="detail-preview"></div>
+                    <dl class="row small text-secondary mt-3 mb-0" id="detail-meta"></dl>
+                    <button id="btn-draft-another" class="btn btn-outline-primary mt-3" type="button">Draft another</button>
                 </div>
+            </section>
 
-                <div class="mb-3">
-                    <label class="form-label">Macro Data</label>
-                    <textarea id="input-macro" class="form-control" rows="3" placeholder="e.g., Fed expected to cut rates, tech sector rallying..." required></textarea>
-                </div>
-
-                <button type="submit" class="btn btn-primary w-100">Generate Draft</button>
-            </form>
-        </div>
+        </main>
     </div>
-
-    <div id="loading-view" class="view-section text-center spinner-container d-none fade-in">
-        <div class="spinner-border text-primary" style="width: 3rem; height: 3rem;" role="status"></div>
-        <h4 class="mt-4" id="loading-text">AI Agents are crafting your newsletter...</h4>
-        <p class="text-muted">Drafting -> Critiquing -> Applying internal edits</p>
-    </div>
-
-    <div id="review-view" class="card shadow-sm view-section border-warning d-none fade-in">
-        <div class="card-header bg-warning text-dark">
-            <strong>Human Review Required</strong>
-        </div>
-        <div class="card-body">
-            <form id="review-form">
-                <div id="review-alert" class="alert alert-info d-none"></div>
-
-                <div class="mb-3">
-                    <label class="form-label fw-bold">Title</label>
-                    <input type="text" id="review-title" class="form-control" required>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label fw-bold">Lead</label>
-                    <textarea id="review-lead" class="form-control" rows="2" required></textarea>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label fw-bold">Body</label>
-                    <textarea id="review-body" class="form-control" rows="8" required></textarea>
-                </div>
-
-                <hr class="my-4">
-
-                <div class="mb-3">
-                    <label class="form-label fw-bold text-danger">Manager Notes (If AI revision needed)</label>
-                    <textarea id="review-notes" class="form-control border-danger" rows="2" placeholder="Tell the HumanEditorAgent what to change..."></textarea>
-                </div>
-
-                <div class="d-flex justify-content-between mt-4">
-                    <button type="button" id="btn-revise" class="btn btn-outline-danger px-4">Needs AI Revision</button>
-                    <button type="button" id="btn-approve" class="btn btn-success px-4">Approve & Send Email</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <div id="success-view" class="view-section text-center spinner-container d-none fade-in">
-        <h1 class="text-success mb-3" style="font-size: 5rem;">✓</h1>
-        <h3>Newsletter Sent!</h3>
-        <p class="text-muted">Check your server console for the email logs.</p>
-        <button id="btn-reset" class="btn btn-outline-primary mt-3 px-5">Draft Another</button>
-    </div>
-
 </div>
 
+<div class="toast-container position-fixed bottom-0 end-0 p-3">
+    <div id="toast" class="toast align-items-center border-0" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="d-flex">
+            <div class="toast-body" id="toast-body"></div>
+            <button type="button" class="btn-close me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-    // --- State Management ---
-    function showView(viewId) {
-        // Add d-none to all sections to hide them completely
-        document.querySelectorAll('.view-section').forEach(el => el.classList.add('d-none'));
-        // Remove d-none from the target section
-        document.getElementById(viewId).classList.remove('d-none');
+    // --- Constants ---
+    const STATUS = {
+        DRAFTING: { label: 'AI drafting', badge: 'text-bg-primary' },
+        AWAITING_REVIEW: { label: 'Awaiting review', badge: 'text-bg-warning' },
+        REVISING: { label: 'AI revising', badge: 'text-bg-info' },
+        SENDING: { label: 'Sending', badge: 'text-bg-info' },
+        SENT: { label: 'Sent', badge: 'text-bg-success' },
+        FAILED: { label: 'Failed', badge: 'text-bg-danger' },
+        CANCELLED: { label: 'Cancelled', badge: 'text-bg-secondary' }
+    };
+    // Workflow tasks of "intelligent-drafter" mapped to the UI steps
+    const STEPS = [
+        { key: 'draft', label: 'AI draft', tasks: ['draftAgent'] },
+        { key: 'review', label: 'Your review', tasks: ['draftReady', 'waitHumanReview'] },
+        { key: 'revise', label: 'AI revision', tasks: ['humanEditorAgent'] },
+        { key: 'send', label: 'Send', tasks: ['sendNewsletter'] }
+    ];
+    const TASK_LABELS = {
+        draftAgent: 'Agents drafting, critiquing and editing',
+        draftReady: 'Draft published for review',
+        waitHumanReview: 'Waiting for your review',
+        humanEditorAgent: 'HumanEditorAgent applying your notes',
+        sendNewsletter: 'Sending the newsletter'
+    };
+
+    // --- State ---
+    const state = {
+        currentId: readSession('currentInstanceId'),
+        current: null,      // newsletter currently displayed
+        revised: false,     // whether the current newsletter went through an AI revision
+        activity: [],       // progress events of the current newsletter (this session only)
+        list: []
+    };
+
+    function readSession(key) { try { return sessionStorage.getItem(key); } catch (e) { return null; } }
+    function writeSession(key, value) {
+        try { value ? sessionStorage.setItem(key, value) : sessionStorage.removeItem(key); } catch (e) { }
     }
 
-    // --- WebSocket Setup ---
+    function el(tag, opts = {}, children = []) {
+        const node = document.createElement(tag);
+        if (opts.className) node.className = opts.className;
+        if (opts.text != null) node.textContent = opts.text;
+        if (opts.attrs) Object.entries(opts.attrs).forEach(([k, v]) => node.setAttribute(k, v));
+        children.forEach(c => c && node.appendChild(c));
+        return node;
+    }
+
+    function relativeTime(iso) {
+        if (!iso) return '';
+        const seconds = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
+        if (seconds < 60) return 'just now';
+        if (seconds < 3600) return Math.floor(seconds / 60) + ' min ago';
+        if (seconds < 86400) return Math.floor(seconds / 3600) + ' h ago';
+        return new Date(iso).toLocaleDateString();
+    }
+
+    function toast(message, variant = 'danger') {
+        const t = document.getElementById('toast');
+        t.className = 'toast align-items-center border-0 text-bg-' + variant;
+        document.getElementById('toast-body').textContent = message;
+        bootstrap.Toast.getOrCreateInstance(t).show();
+    }
+
+    // --- Theme ---
+    document.getElementById('btn-theme').addEventListener('click', () => {
+        const next = document.documentElement.getAttribute('data-bs-theme') === 'dark' ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-bs-theme', next);
+        try { localStorage.setItem('theme', next); } catch (e) { }
+    });
+
+    // --- Views ---
+    function showView(viewId) {
+        document.querySelectorAll('.view-section').forEach(v => v.classList.add('d-none'));
+        document.getElementById(viewId).classList.remove('d-none');
+        document.querySelectorAll('.instance-id').forEach(c => c.textContent = state.currentId || '');
+    }
+
+    function setCurrent(newsletter) {
+        const changed = !newsletter || newsletter.instanceId !== state.currentId;
+        state.current = newsletter;
+        state.currentId = newsletter ? newsletter.instanceId : null;
+        if (changed) {
+            state.activity = [];
+            state.revised = false;
+        }
+        writeSession('currentInstanceId', state.currentId);
+        renderCurrent();
+        renderHistory();
+    }
+
+    function renderCurrent() {
+        const n = state.current;
+        if (!n) {
+            showView('compose-view');
+            return;
+        }
+        if (n.status === 'REVISING' || n.currentStep === 'humanEditorAgent') state.revised = true;
+        switch (n.status) {
+            case 'AWAITING_REVIEW':
+                renderReview(n);
+                break;
+            case 'SENT':
+            case 'FAILED':
+            case 'CANCELLED':
+                renderDetail(n);
+                break;
+            default:
+                renderProgress(n);
+        }
+    }
+
+    // Progress
+    function currentStepIndex(n) {
+        if (n.status === 'SENDING') return 3;
+        if (n.status === 'REVISING' && !n.currentStep) return 2;
+        const idx = STEPS.findIndex(s => s.tasks.includes(n.currentStep));
+        return idx < 0 ? 0 : idx;
+    }
+
+    function renderProgress(n) {
+        const active = currentStepIndex(n);
+        const stepper = document.getElementById('stepper');
+        stepper.replaceChildren(...STEPS.map((step, i) => {
+            const li = el('li', {}, [el('div', { className: 'step-dot', text: i < active ? '✓' : String(i + 1) }), el('span', { text: step.label })]);
+            if (step.key === 'revise' && !state.revised && active > i) li.classList.add('skipped');
+            else if (i < active) li.classList.add('done');
+            else if (i === active) li.classList.add('active');
+            return li;
+        }));
+
+        const titles = {
+            DRAFTING: ['AI agents are working…', 'Drafting → critiquing → applying internal edits'],
+            REVISING: ['Applying your notes…', 'The HumanEditorAgent is revising the draft'],
+            SENDING: ['Sending the newsletter…', 'Almost there']
+        };
+        const [title, subtitle] = titles[n.status] || titles.DRAFTING;
+        document.getElementById('progress-title').textContent = title;
+        document.getElementById('progress-subtitle').textContent = subtitle;
+        const badge = document.getElementById('progress-badge');
+        badge.className = 'badge rounded-pill ' + (STATUS[n.status] || STATUS.DRAFTING).badge;
+        badge.textContent = (STATUS[n.status] || STATUS.DRAFTING).label;
+
+        const log = document.getElementById('activity-log');
+        const entries = state.activity.length
+            ? state.activity
+            : [{ text: TASK_LABELS[n.currentStep] || 'Workflow started', at: n.updatedAt, phase: 'started' }];
+        log.replaceChildren(...entries.slice().reverse().map(e => el('li', {}, [
+            el('span', { className: 'me-2', text: e.phase === 'completed' ? '✓' : '•' }),
+            el('span', { text: e.text }),
+            el('span', { className: 'text-secondary ms-2', text: e.at ? new Date(e.at).toLocaleTimeString() : '' })
+        ])));
+        showView('progress-view');
+    }
+
+    // Review
+    function previewNode(draft, n) {
+        const paragraphs = (draft.body || '').split(/\n\s*\n|\n/).filter(p => p.trim().length);
+        const tickers = (n && n.topMovers ? n.topMovers.split(',') : []).map(t => t.trim()).filter(Boolean);
+        return el('article', { className: 'newsletter-preview' }, [
+            el('div', { className: 'masthead' }, [
+                el('span', { text: 'ACME Finance · Weekly' }),
+                el('span', { text: n && n.mood ? n.mood.toLowerCase() + ' market' : '' })
+            ]),
+            el('div', { className: 'content' }, [
+                tickers.length ? el('div', { className: 'mb-2' }, tickers.map(t => el('span', { className: 'ticker-chip', text: t }))) : null,
+                el('h3', { text: draft.title || 'Untitled' }),
+                el('p', { className: 'lead-text', text: draft.lead || '' }),
+                el('div', { className: 'body-text' }, paragraphs.map(p => el('p', { text: p })))
+            ])
+        ]);
+    }
+
+    function reviewDraft() {
+        return {
+            title: document.getElementById('review-title').value,
+            lead: document.getElementById('review-lead').value,
+            body: document.getElementById('review-body').value
+        };
+    }
+
+    function refreshReviewPreview() {
+        document.getElementById('tab-preview').replaceChildren(previewNode(reviewDraft(), state.current));
+    }
+
+    function renderReview(n) {
+        document.getElementById('review-title').value = n.title || '';
+        document.getElementById('review-lead').value = n.lead || '';
+        document.getElementById('review-body').value = n.body || '';
+        document.getElementById('review-notes').value = '';
+        selectTab('preview');
+        refreshReviewPreview();
+        setReviewButtonsDisabled(false);
+        showView('review-view');
+    }
+
+    function selectTab(tab) {
+        document.querySelectorAll('[data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+        document.getElementById('tab-preview').classList.toggle('d-none', tab !== 'preview');
+        document.getElementById('review-form').classList.toggle('d-none', tab !== 'edit');
+        if (tab === 'preview') refreshReviewPreview();
+    }
+
+    document.querySelectorAll('[data-tab]').forEach(b => b.addEventListener('click', () => selectTab(b.dataset.tab)));
+
+    function setReviewButtonsDisabled(disabled) {
+        document.getElementById('btn-revise').disabled = disabled;
+        document.getElementById('btn-approve').disabled = disabled;
+    }
+
+    // Details
+    function renderDetail(n) {
+        const s = STATUS[n.status] || STATUS.SENT;
+        const headings = { SENT: 'Newsletter sent', FAILED: 'Something went wrong', CANCELLED: 'Newsletter cancelled' };
+        document.getElementById('detail-heading').textContent = headings[n.status] || s.label;
+        const badge = document.getElementById('detail-badge');
+        badge.className = 'badge rounded-pill ' + s.badge;
+        badge.textContent = s.label;
+        document.getElementById('detail-preview').replaceChildren(
+            n.title ? previewNode(n, n) : el('p', { className: 'text-secondary', text: 'No draft was produced.' }));
+        const meta = [['Tone', n.tone], ['Length', n.length], ['Macro data', n.macroData], ['Your notes', n.notes],
+            ['Created', n.createdAt && new Date(n.createdAt).toLocaleString()], ['Instance', n.instanceId]];
+        document.getElementById('detail-meta').replaceChildren(...meta.filter(([, v]) => v).flatMap(([k, v]) => [
+            el('dt', { className: 'col-sm-3', text: k }), el('dd', { className: 'col-sm-9 text-body', text: v })]));
+        showView('detail-view');
+    }
+
+    // --- History ---
+    function renderHistory() {
+        const list = document.getElementById('history-list');
+        document.getElementById('history-empty').classList.toggle('d-none', state.list.length > 0);
+        list.replaceChildren(...state.list.map(n => {
+            const s = STATUS[n.status] || STATUS.DRAFTING;
+            const btn = el('button', { className: 'history-item' + (n.instanceId === state.currentId ? ' active' : ''), attrs: { type: 'button' } }, [
+                el('div', { className: 'd-flex justify-content-between align-items-center gap-2' }, [
+                    el('span', { className: 'history-title', text: n.title || 'Draft in progress…' }),
+                    el('span', { className: 'badge rounded-pill ' + s.badge, text: s.label })
+                ]),
+                el('div', { className: 'small text-secondary mt-1', text: [n.topMovers, relativeTime(n.createdAt)].filter(Boolean).join(' · ') })
+            ]);
+            btn.addEventListener('click', () => openNewsletter(n.instanceId));
+            return btn;
+        }));
+    }
+
+    let historyTimer = null;
+    function scheduleHistoryRefresh() {
+        clearTimeout(historyTimer);
+        historyTimer = setTimeout(loadHistory, 400);
+    }
+
+    async function loadHistory() {
+        try {
+            const response = await fetch('/api/newsletters');
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            state.list = await response.json();
+            renderHistory();
+        } catch (err) {
+            console.error('Failed to load newsletters', err);
+        }
+    }
+
+    async function openNewsletter(instanceId) {
+        try {
+            const response = await fetch('/api/newsletters/' + encodeURIComponent(instanceId));
+            if (response.status === 404) {
+                setCurrent(null);
+                return;
+            }
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            setCurrent(await response.json());
+        } catch (err) {
+            toast('Could not load the newsletter: ' + err.message);
+        }
+    }
+
+    document.getElementById('btn-new').addEventListener('click', () => setCurrent(null));
+    document.getElementById('btn-draft-another').addEventListener('click', () => setCurrent(null));
+
+    // --- WebSocket ---
     const wsProto = window.location.protocol === "https:" ? "wss://" : "ws://";
     const wsUrl = wsProto + window.location.host + "/ws/newsletter";
     const reconnectBaseDelayMs = 1000;
@@ -156,9 +547,9 @@
     const connectionStatus = document.getElementById('connection-status');
     const connectionStatusText = document.getElementById('connection-status-text');
 
-    function updateConnectionStatus(state, text) {
+    function updateConnectionStatus(status, text) {
         connectionStatus.classList.remove('connection-connecting', 'connection-connected', 'connection-reconnecting', 'connection-disconnected');
-        connectionStatus.classList.add('connection-' + state);
+        connectionStatus.classList.add('connection-' + status);
         connectionStatusText.innerText = text;
     }
 
@@ -187,23 +578,30 @@
     }
 
     function handleSocketMessage(event) {
-        console.log("WebSocket received:", event.data);
         const payload = JSON.parse(event.data);
+        // Every browser receives every event: refresh the history, but only drive the view of our own newsletter
+        scheduleHistoryRefresh();
+        if (!state.current || payload.instanceId !== state.currentId) {
+            return;
+        }
 
-        const draft = payload.data ? payload.data : payload;
-
-        // Check if we actually have a draft by looking for the 'title' property
-        if (draft && draft.title) {
-            // Populate Review Form
-            document.getElementById('review-title').value = draft.title || '';
-            document.getElementById('review-lead').value = draft.lead || '';
-            document.getElementById('review-body').value = draft.body || '';
-            document.getElementById('review-notes').value = '';
-
-            // Switch the UI to the Review screen!
-            showView('review-view');
-        } else {
-            console.warn("Received unknown WebSocket payload:", payload);
+        if (payload.type === 'org.acme.email.review.required') {
+            const draft = payload.data || {};
+            setCurrent(Object.assign({}, state.current, draft, { status: 'AWAITING_REVIEW', currentStep: 'waitHumanReview' }));
+        } else if (payload.type === 'progress') {
+            if (payload.phase === 'started') {
+                state.current.currentStep = payload.step;
+                if (payload.step === 'humanEditorAgent') state.revised = true;
+            }
+            state.activity.push({
+                text: (TASK_LABELS[payload.step] || payload.step) + (payload.phase === 'completed' ? ' — done' : ''),
+                at: payload.at,
+                phase: payload.phase
+            });
+            // keep the review form untouched while the user is reviewing
+            if (state.current.status !== 'AWAITING_REVIEW') renderCurrent();
+        } else if (payload.type === 'status') {
+            setCurrent(Object.assign({}, state.current, { status: payload.status }));
         }
     }
 
@@ -219,7 +617,9 @@
             reconnectAttempts = 0;
             clearReconnectTimer();
             updateConnectionStatus('connected', 'Connected');
-            console.log("WebSocket connected");
+            // catch up with anything missed while disconnected
+            loadHistory();
+            if (state.currentId) openNewsletter(state.currentId);
         };
 
         socket.onmessage = handleSocketMessage;
@@ -241,8 +641,6 @@
         };
     }
 
-    connectWebSocket();
-
     // Prevent orphan reconnect attempts when navigating away.
     window.addEventListener('beforeunload', () => {
         isPageUnloading = true;
@@ -252,10 +650,20 @@
         }
     });
 
-    // --- Form Handlers ---
-
-    // 1. Submit Request
+    // --- Compose ---
     const requestForm = document.getElementById('request-form');
+    const moversInput = document.getElementById('input-movers');
+
+    function parseMovers() {
+        return moversInput.value.split(',').map(t => t.trim().toUpperCase()).filter(t => t.length > 0);
+    }
+
+    moversInput.addEventListener('input', () => {
+        const movers = parseMovers();
+        const preview = document.getElementById('movers-preview');
+        if (movers.length) preview.replaceChildren(...movers.map(t => el('span', { className: 'ticker-chip', text: t })));
+        else preview.textContent = 'Comma separated tickers.';
+    });
 
     // Submit with Enter from non-textarea fields.
     requestForm.addEventListener('keydown', function(e) {
@@ -265,75 +673,88 @@
         }
     });
 
-    requestForm.addEventListener('submit', function(e) {
+    requestForm.addEventListener('submit', async function(e) {
         e.preventDefault();
-
-        // Format the string "AAPL, MSFT" into a clean JSON Array: ["AAPL", "MSFT"]
-        const rawMovers = document.getElementById('input-movers').value;
-        const moversArray = rawMovers.split(',').map(ticker => ticker.trim()).filter(t => t.length > 0);
-
         const requestData = {
             mood: document.getElementById('input-mood').value,
-            topMovers: moversArray,
+            topMovers: parseMovers(),
             macroData: document.getElementById('input-macro').value,
             tone: document.getElementById('input-tone').value,
             length: document.getElementById('input-length').value
         };
 
-        fetch('/api/newsletter', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(requestData)
-        }).then(response => {
-            if(response.ok) {
-                document.getElementById('loading-text').innerText = "AI Agents are crafting your newsletter...";
-                showView('loading-view');
-            } else {
-                alert("Failed to start workflow! Check server logs for Jackson mapping errors.");
-                console.error("Payload rejected:", requestData);
-            }
-        }).catch(err => alert("Network error: " + err));
+        const button = document.getElementById('btn-generate');
+        button.disabled = true;
+        try {
+            const response = await fetch('/api/newsletter', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(requestData)
+            });
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            const body = await response.json();
+            setCurrent({
+                instanceId: body.instanceId, status: 'DRAFTING', currentStep: 'draftAgent',
+                mood: requestData.mood, tone: requestData.tone, length: requestData.length,
+                topMovers: requestData.topMovers.join(', '), macroData: requestData.macroData,
+                createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+            });
+            requestForm.reset();
+            moversInput.dispatchEvent(new Event('input'));
+            loadHistory();
+        } catch (err) {
+            toast('Failed to start the workflow (' + err.message + '). Check the server logs.');
+        } finally {
+            button.disabled = false;
+        }
     });
 
-    // 2. Submit Review
-    function submitReview(status) {
-        const reviewData = {
-            status: status,
-            notes: document.getElementById('review-notes').value,
-            draft: {
-                title: document.getElementById('review-title').value,
-                lead: document.getElementById('review-lead').value,
-                body: document.getElementById('review-body').value
-            }
-        };
+    // --- Review ---
+    async function submitReview(status) {
+        const notes = document.getElementById('review-notes').value;
+        if (status === 'NEEDS_REVISION' && !notes.trim()) {
+            toast('Tell the AI editor what to change in the notes.', 'warning');
+            document.getElementById('review-notes').focus();
+            return;
+        }
+        const reviewData = { status: status, notes: notes, draft: reviewDraft() };
 
-        fetch('/api/newsletter', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(reviewData)
-        }).then(response => {
-            if(response.ok) {
-                if(status === 'NEEDS_REVISION') {
-                    document.getElementById('loading-text').innerText = "HumanEditorAgent is applying your notes...";
-                    showView('loading-view');
-                } else {
-                    showView('success-view');
-                }
-            } else {
-                alert("Failed to submit review.");
+        setReviewButtonsDisabled(true);
+        try {
+            const response = await fetch('/api/newsletter', {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Flow-Instance-Id': state.currentId
+                },
+                body: JSON.stringify(reviewData)
+            });
+            if (response.status === 409) {
+                toast('This newsletter is no longer waiting for a review.', 'warning');
+                openNewsletter(state.currentId);
+                return;
             }
-        });
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            if (status === 'NEEDS_REVISION') state.revised = true;
+            setCurrent(Object.assign({}, state.current, reviewData.draft, {
+                status: status === 'NEEDS_REVISION' ? 'REVISING' : 'SENDING',
+                currentStep: null,
+                notes: notes
+            }));
+            loadHistory();
+        } catch (err) {
+            toast('Failed to submit the review (' + err.message + ').');
+            setReviewButtonsDisabled(false);
+        }
     }
 
-    // 3. Button Listeners for Review Form
     document.getElementById('btn-revise').addEventListener('click', () => submitReview('NEEDS_REVISION'));
     document.getElementById('btn-approve').addEventListener('click', () => submitReview('DONE'));
 
-    // 4. Reset App
-    document.getElementById('btn-reset').addEventListener('click', () => {
-        document.getElementById('request-form').reset();
-        showView('request-view');
-    });
+    // --- Boot ---
+    setInterval(renderHistory, 60000); // keep relative times fresh
+    renderCurrent();
+    connectWebSocket();
 </script>
 
 </body>

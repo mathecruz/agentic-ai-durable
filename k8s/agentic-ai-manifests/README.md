@@ -3,7 +3,7 @@
 This repository contains the infrastructure manifests and the Quarkus Serverless Workflow application (`newsletter-drafter`) for the Agentic AI demo.
 
 The infrastructure is pre-configured for Kubernetes (KIND recommended) and includes:
-- **Redis**
+- **PostgreSQL** (workflow persistence; schema migrated by the app at startup via `quarkus-flow-db-migration`)
 - **Kafka** (single node, KRaft, PLAINTEXT, auto-creation enabled)
 - **Prometheus**
 - **Grafana** (integrated with Prometheus + preloaded custom dashboards)
@@ -32,7 +32,7 @@ Run this command, replacing `<YOUR_ACTUAL_KEY>` with your real OpenAI API key:
 
 kubectl create secret generic openai-credentials --from-literal=api-key="<YOUR_ACTUAL_KEY>"
 
-*(Note: The ConfigMap for Redis and Kafka connections is automatically generated and applied during the Quarkus build process).*
+*(Note: The ConfigMap for PostgreSQL and Kafka connections is automatically generated and applied during the Quarkus build process).*
 
 ## 3. Build & Deploy the Application
 
@@ -78,8 +78,8 @@ kubectl port-forward svc/prometheus 9090:9090
 * **Access at:** http://localhost:9090
 
 ### Backend Infrastructure (For debugging)
-**Redis:**
-kubectl port-forward svc/redis 6379:6379
+**PostgreSQL:**
+kubectl port-forward svc/postgres 5432:5432
 
 **Kafka:**
 kubectl port-forward svc/kafka 9092:9092

@@ -10,11 +10,6 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        profile: [ mysql, mssql, postgresql, h2, oracle ]
-    name: build (${{ matrix.profile }})
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -26,6 +21,6 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      - name: Build ${{ matrix.profile }}
+      - name: Build
         working-directory: newsletter-drafter
-        run: mvn -B clean package -P${{ matrix.profile }}
+        run: mvn -B clean package
