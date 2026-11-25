@@ -15,7 +15,7 @@
         <quarkus.platform.group-id>io.quarkus.platform</quarkus.platform.group-id>
         <quarkus.platform.version>3.40.1.2</quarkus.platform.version>
         <skipITs>true</skipITs>
-        <surefire-plugin.version>3.5.4</surefire-plugin.version>
+        <surefire-plugin.version>3.6.1</surefire-plugin.version>
         <io.quarkiverse.langchain4j.version>1.15.1</io.quarkiverse.langchain4j.version>
         <io.quarkiverse.flow.version>1.4.0</io.quarkiverse.flow.version>
     </properties>
